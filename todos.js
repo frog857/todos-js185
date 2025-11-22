@@ -124,12 +124,13 @@ app.get("/lists/:todoListId", (req, res, next) => {
   let todoListId = req.params.todoListId;
   let store = res.locals.store;
   let todoList = store.loadTodoList(+todoListId);
+  console.log(todoList);
 
   if (todoList === undefined) {
     next(new Error("Not found."));
   } else {
     todoList.todos = store.sortedTodos(todoList);
-    
+
     res.render("list", {
       todoList,
       isDoneTodoList: store.isDoneTodoList(todoList),
@@ -141,18 +142,23 @@ app.get("/lists/:todoListId", (req, res, next) => {
 // Toggle completion status of a todo
 app.post("/lists/:todoListId/todos/:todoId/toggle", (req, res, next) => {
   let { todoListId, todoId } = { ...req.params };
-  let todo = loadTodo(+todoListId, +todoId, req.session.todoLists);
+
+  let todo = res.locals.store.loadTodo(+todoListId, +todoId);
+  
   if (!todo) {
     next(new Error("Not found."));
   } else {
-    let title = todo.title;
-    if (todo.isDone()) {
-      todo.markUndone();
-      req.flash("success", `"${title}" marked as NOT done!`);
+    console.log(todo);
+    res.locals.store.toggleTodo(todoListId, todoId);
+    todo = res.locals.store.loadTodo(+todoListId, +todoId);
+    console.log(todo.done);
+    if (todo.done === false) {
+      req.flash("success", `"${todo.title}" marked as NOT done!`);
     } else {
-      todo.markDone();
-      req.flash("success", `"${title}" marked done.`);
+      req.flash("success", `"${todo.title}" marked done.`);
     }
+
+    console.log(res.locals.store.loadTodoList(+todoListId));
 
     res.redirect(`/lists/${todoListId}`);
   }
