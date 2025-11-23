@@ -4,8 +4,6 @@ const flash = require("express-flash");
 const session = require("express-session");
 const { body, validationResult } = require("express-validator");
 const TodoList = require("./lib/todolist");
-const Todo = require("./lib/todo");
-const { sortTodos } = require("./lib/sort");
 const store = require("connect-loki");
 const SessionPersistence = require('./lib/session-persistence');
 
@@ -124,7 +122,6 @@ app.get("/lists/:todoListId", (req, res, next) => {
   let todoListId = req.params.todoListId;
   let store = res.locals.store;
   let todoList = store.loadTodoList(+todoListId);
-  console.log(todoList);
 
   if (todoList === undefined) {
     next(new Error("Not found."));
@@ -142,23 +139,16 @@ app.get("/lists/:todoListId", (req, res, next) => {
 // Toggle completion status of a todo
 app.post("/lists/:todoListId/todos/:todoId/toggle", (req, res, next) => {
   let { todoListId, todoId } = { ...req.params };
-
-  let todo = res.locals.store.loadTodo(+todoListId, +todoId);
-  
-  if (!todo) {
+  let toggled = res.locals.store.toggleDoneTodo(+todoListId, +todoId);
+  if (!toggled) {
     next(new Error("Not found."));
   } else {
-    console.log(todo);
-    res.locals.store.toggleTodo(todoListId, todoId);
-    todo = res.locals.store.loadTodo(+todoListId, +todoId);
-    console.log(todo.done);
-    if (todo.done === false) {
-      req.flash("success", `"${todo.title}" marked as NOT done!`);
+    let todo = res.locals.store.loadTodo(+todoListId, +todoId);
+    if (todo.done) {
+      req.flash("success", `"${todo.title}" marked done`);
     } else {
-      req.flash("success", `"${todo.title}" marked done.`);
+      req.flash("success", `"${todo.title}" marked as NOT done!`);
     }
-
-    console.log(res.locals.store.loadTodoList(+todoListId));
 
     res.redirect(`/lists/${todoListId}`);
   }
@@ -167,30 +157,23 @@ app.post("/lists/:todoListId/todos/:todoId/toggle", (req, res, next) => {
 // Delete a todo
 app.post("/lists/:todoListId/todos/:todoId/destroy", (req, res, next) => {
   let { todoListId, todoId } = { ...req.params };
+  let removed = res.locals.store.removeTodo(+todoListId, +todoId);
 
-  let todoList = loadTodoList(+todoListId, req.session.todoLists);
-  if (!todoList) {
-    next(new Error("Not found."));
+  if (!removed) {
+    next(new Error("Not found."))
   } else {
-    let todo = loadTodo(+todoListId, +todoId, req.session.todoLists);
-    if (!todo) {
-      next(new Error("Not found."));
-    } else {
-      todoList.removeAt(todoList.findIndexOf(todo));
-      req.flash("success", "The todo has been deleted.");
-      res.redirect(`/lists/${todoListId}`);
-    }
+    req.flash("success", "The todo has been deleted.");    
+    res.redirect(`/lists/${todoListId}`);
   }
 });
 
 // Mark all todos as done
 app.post("/lists/:todoListId/complete_all", (req, res, next) => {
   let todoListId = req.params.todoListId;
-  let todoList = loadTodoList(+todoListId, req.session.todoLists);
-  if (!todoList) {
+  let allMarkedDone = res.locals.store.markAllDone(+todoListId);
+  if (!allMarkedDone) {
     next(new Error("Not found."));
   } else {
-    todoList.markAllDone();
     req.flash("success", "All todos have been marked as done.");
     res.redirect(`/lists/${todoListId}`);
   }
@@ -208,7 +191,8 @@ app.post("/lists/:todoListId/todos",
   ],
   (req, res, next) => {
     let todoListId = req.params.todoListId;
-    let todoList = loadTodoList(+todoListId, req.session.todoLists);
+    let todoTitle = req.body.todoTitle;
+    let todoList = res.locals.store.loadTodoList(+todoListId);
     if (!todoList) {
       next(new Error("Not found."));
     } else {
@@ -216,17 +200,24 @@ app.post("/lists/:todoListId/todos",
       if (!errors.isEmpty()) {
         errors.array().forEach(message => req.flash("error", message.msg));
 
+        todoList.todos = res.locals.store.sortedTodos(todoList);
+
         res.render("list", {
+          todoList,
+          hasUndoneTodos: res.locals.store.hasUndoneTodos(todoList),
+          isDoneTodoList: res.locals.store.isDoneTodoList(todoList),
+          todoTitle,
           flash: req.flash(),
-          todoList: todoList,
-          todos: sortTodos(todoList),
-          todoTitle: req.body.todoTitle,
         });
       } else {
-        let todo = new Todo(req.body.todoTitle);
-        todoList.add(todo);
-        req.flash("success", "The todo has been created.");
-        res.redirect(`/lists/${todoListId}`);
+        let added = res.locals.store.createTodo(todoTitle, +todoListId);
+
+        if (!added) {
+          next(new Error("Not added."))
+        } else {
+          req.flash("success", "The todo has been created.");
+          res.redirect(`/lists/${todoListId}`);
+        }
       }
     }
   }
