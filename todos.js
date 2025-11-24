@@ -59,20 +59,25 @@ app.get("/", (req, res) => {
 
 // Render the list of todo lists
 app.get("/lists", async (req, res) => {
-  let store = res.locals.store;
-  let todoLists = await store.sortedTodoLists();
-  console.log(todoLists);
-
-  let todosInfo = todoLists.map(todoList => ({
-    countAllTodos: todoList.todos.length,
-    countDoneTodos: todoList.todos.filter(todo => todo.done).length,
-    isDone: store.isDoneTodoList(todoList),
-  }));
-
-  res.render("lists", {
-    todoLists,
-    todosInfo,
-  });
+  try {
+    let store = res.locals.store;
+    let todoLists = await store.sortedTodoLists();
+    console.log(todoLists);
+  
+    let todosInfo = todoLists.map(todoList => ({
+      countAllTodos: todoList.todos.length,
+      countDoneTodos: todoList.todos.filter(todo => todo.done).length,
+      isDone: store.isDoneTodoList(todoList),
+    }));
+  
+    res.render("lists", {
+      todoLists,
+      todosInfo,
+    });
+  } catch (error) {
+    next(error)
+  }
+  
 });
 
 // Render new todo list page
@@ -116,22 +121,27 @@ app.post("/lists",
 );
 
 // Render individual todo list and its todos
-app.get("/lists/:todoListId", (req, res, next) => {
-  let todoListId = req.params.todoListId;
-  let store = res.locals.store;
-  let todoList = store.loadTodoList(+todoListId);
-
-  if (todoList === undefined) {
-    next(new Error("Not found."));
-  } else {
-    todoList.todos = store.sortedTodos(todoList);
-
-    res.render("list", {
-      todoList,
-      isDoneTodoList: store.isDoneTodoList(todoList),
-      hasUndoneTodos: store.hasUndoneTodos(todoList),
-    });
+app.get("/lists/:todoListId", async (req, res, next) => {
+  try {
+    let todoListId = req.params.todoListId;
+    let store = res.locals.store;
+    let todoList = await store.loadTodoList(+todoListId);
+  
+    if (todoList === undefined) {
+      next(new Error("Not found."));
+    } else {
+      todoList.todos = await store.sortedTodos(todoList);
+  
+      res.render("list", {
+        todoList,
+        isDoneTodoList: store.isDoneTodoList(todoList),
+        hasUndoneTodos: store.hasUndoneTodos(todoList),
+      });
+    }
+  } catch (error) {
+    next(error);
   }
+  
 });
 
 // Toggle completion status of a todo
