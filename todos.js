@@ -3,9 +3,8 @@ const morgan = require("morgan");
 const flash = require("express-flash");
 const session = require("express-session");
 const { body, validationResult } = require("express-validator");
-const TodoList = require("./lib/todolist");
 const store = require("connect-loki");
-const SessionPersistence = require('./lib/session-persistence');
+const PgPersistence = require('./lib/pg-persistence');
 
 const app = express();
 const host = "localhost";
@@ -36,7 +35,7 @@ app.use(flash());
 
 // create a new datastore
 app.use((req, res, next) => {
-  res.locals.store = new SessionPersistence(req.session);
+  res.locals.store = new PgPersistence(req.session);
   next();
 })
 
@@ -51,12 +50,7 @@ app.use((req, res, next) => {
 // Find a todo with the indicated ID in the indicated todo list. Returns
 // `undefined` if not found. Note that both `todoListId` and `todoId` must be
 // numeric.
-const loadTodo = (todoListId, todoId, todoLists) => {
-  let todoList = loadTodoList(todoListId, todoLists);
-  if (!todoList) return undefined;
 
-  return todoList.todos.find(todo => todo.id === todoId);
-};
 
 // Redirect start page
 app.get("/", (req, res) => {
@@ -64,9 +58,10 @@ app.get("/", (req, res) => {
 });
 
 // Render the list of todo lists
-app.get("/lists", (req, res) => {
+app.get("/lists", async (req, res) => {
   let store = res.locals.store;
-  let todoLists = store.sortedTodoLists();
+  let todoLists = await store.sortedTodoLists();
+  console.log(todoLists);
 
   let todosInfo = todoLists.map(todoList => ({
     countAllTodos: todoList.todos.length,
@@ -102,14 +97,18 @@ app.post("/lists",
   ],
   (req, res) => {
     let errors = validationResult(req);
+    let todoListTitle = req.body.todoListTitle;
     if (!errors.isEmpty()) {
       errors.array().forEach(message => req.flash("error", message.msg));
       res.render("new-list", {
         flash: req.flash(),
-        todoListTitle: req.body.todoListTitle,
+        todoListTitle,
       });
     } else {
-      req.session.todoLists.push(new TodoList(req.body.todoListTitle));
+      let created = res.locals.store.createTodoList(todoListTitle);
+      if (!created) {
+        next(new Error("Failed to create todo"));
+      }
       req.flash("success", "The todo list has been created.");
       res.redirect("/lists");
     }
