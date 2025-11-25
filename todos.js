@@ -48,10 +48,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Find a todo with the indicated ID in the indicated todo list. Returns
-// `undefined` if not found. Note that both `todoListId` and `todoId` must be
-// numeric.
-
 
 // Redirect start page
 app.get("/", (req, res) => {
@@ -111,7 +107,7 @@ app.post("/lists",
     } else {
       let created = await res.locals.store.createTodoList(todoListTitle);
       if (!created) throw new Error("Failed to create todo");
-      
+
       req.flash("success", "The todo list has been created.");
       res.redirect("/lists");
     }
@@ -120,7 +116,7 @@ app.post("/lists",
 
 // Render individual todo list and its todos
 app.get("/lists/:todoListId", 
-  catchError(async (req, res, next) => {
+  catchError(async (req, res) => {
     let todoListId = req.params.todoListId;
     let store = res.locals.store;
     let todoList = await store.loadTodoList(+todoListId);
@@ -190,7 +186,7 @@ app.post("/lists/:todoListId/todos",
       .isLength({ max: 100 })
       .withMessage("Todo title must be between 1 and 100 characters.")
   ],
-  catchError(async (req, res, next) => {
+  catchError(async (req, res) => {
     let todoListId = req.params.todoListId;
     let todoTitle = req.body.todoTitle;
 
@@ -222,7 +218,7 @@ app.post("/lists/:todoListId/todos",
 
 // Render edit todo list form
 app.get("/lists/:todoListId/edit", 
-  catchError(async (req, res, next) => {
+  catchError(async (req, res) => {
     let todoListId = req.params.todoListId;
     let todoList = await res.locals.store.loadTodoList(+todoListId);
     if (!todoList) throw new Error("Not found.");
@@ -233,7 +229,7 @@ app.get("/lists/:todoListId/edit",
 
 // Delete todo list
 app.post("/lists/:todoListId/destroy", 
-  catchError(async (req, res, next) => {
+  catchError(async (req, res) => {
     let todoListId = req.params.todoListId;
     let deleted = await res.locals.store.deleteTodoList(+todoListId);
     if (!deleted) throw new Error("Not found.");
