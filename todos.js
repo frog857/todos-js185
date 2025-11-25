@@ -6,6 +6,7 @@ const { body, validationResult } = require("express-validator");
 const store = require("connect-loki");
 const PgPersistence = require('./lib/pg-persistence');
 const catchError = require('./lib/catch-error');
+const { renderFile } = require("pug");
 
 const app = express();
 const host = "localhost";
@@ -136,7 +137,7 @@ app.get("/lists/:todoListId",
 // Toggle completion status of a todo
 app.post("/lists/:todoListId/todos/:todoId/toggle", 
     catchError(async (req, res) => {
-    let { todoListId, todoId } = { ...req.params };
+    let { todoListId, todoId } = req.params;
     let toggled = await res.locals.store.toggleDoneTodo(+todoListId, +todoId);
     if (!toggled) throw new Error("Not found");
 
@@ -154,7 +155,7 @@ app.post("/lists/:todoListId/todos/:todoId/toggle",
 // Delete a todo
 app.post("/lists/:todoListId/todos/:todoId/destroy", 
   catchError(async (req, res) => {
-    let { todoListId, todoId } = { ...req.params };
+    let { todoListId, todoId } = req.params;
     let removed = await res.locals.store.deleteTodo(+todoListId, +todoId);
 
     if (!removed) throw new Error("Not found.");
@@ -257,26 +258,44 @@ app.post("/lists/:todoListId/edit",
       .withMessage("Todo List title must be unique."),
   ],
   catchError(async (req, res) => {
+    let store = res.locals.store;
     let todoListId = req.params.todoListId;
-    let todoList = await res.locals.store.loadTodoList(+todoListId);
-    if (!todoList) throw new Error("Not found.");
-
     let todoListTitle = req.body.todoListTitle;
-    let errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      errors.array().forEach(message => req.flash("error", message.msg));
 
+    const rerenderEditList = async () => {
+      let todoList = await store.loadTodoList(+todoListId);
+      if (!todoList) throw new Error("Not found.");
+      
       res.render("edit-list", {
         todoList,
         todoListTitle,
         flash: req.flash(),
       });
-    } else {
-      let titleChanged = await res.locals.store.changeTodoListTitle(+todoListId, todoListTitle);
-      if (!titleChanged) throw new Error("Not found.");
+    }
 
-      req.flash("success", "Todo list updated.");
-      res.redirect(`/lists/${todoListId}`);
+    try {
+      let errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        errors.array().forEach(message => req.flash("error", message.msg));
+        await rerenderEditList();
+  
+      } else if (!await store.todoListTitleIsUnique(todoListTitle)) {
+        req.flash("error", "the list title must be unique");
+        await rerenderEditList();
+      } else {
+        let titleChanged = await res.locals.store.changeTodoListTitle(+todoListId, todoListTitle);
+        if (!titleChanged) throw new Error("Not found.");
+  
+        req.flash("success", "Todo list updated.");
+        res.redirect(`/lists/${todoListId}`);
+      }
+    } catch (error) {
+      if (/duplicate key value violates unique constraint/.test(String(error))) {
+        req.flash("error", "the list title must be unique");
+        await rerenderEditList(todoListTitle);
+      } else {
+        throw error;
+      }
     }
   })
 );
