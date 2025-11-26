@@ -6,7 +6,6 @@ const { body, validationResult } = require("express-validator");
 const store = require("connect-loki");
 const PgPersistence = require('./lib/pg-persistence');
 const catchError = require('./lib/catch-error');
-const { renderFile } = require("pug");
 
 const app = express();
 const host = "localhost";
@@ -45,15 +44,61 @@ app.use((req, res, next) => {
 // Extract session info
 app.use((req, res, next) => {
   res.locals.flash = req.session.flash;
+  res.locals.username = req.session.username;
+  res.locals.signedIn = req.session.signedIn;
   delete req.session.flash;
   next();
 });
 
+// Detect unauthorized access to routes.
+const requiresAuthentication = (req, res) => {
+  if (!res.locals.signedIn) {
+    console.log("Unauthorized");
+    res.status(401).send("Unauthorized");
+  } else {
+    next();
+  }
+}
 
 // Redirect start page
 app.get("/", (req, res) => {
   res.redirect("/lists");
 });
+
+
+// Render sign in page
+app.get("/users/signin", (req, res) => {
+  req.flash("info", "Please sign in.");
+  res.render("signin", {
+    flash: req.flash(),
+  });
+})
+
+// Sign out Path
+app.post("/users/signout", (req, res) => {
+  delete req.session.signedIn;
+  delete req.session.username;
+  res.redirect("/users/signin");
+})
+
+// Submit login credentials
+app.post("/users/signin", (req, res) => {
+    let { username, password } = req.body;
+    username = username.trim();
+
+    if (username !== "admin" || password !== "secret") {
+      req.flash("error", "Invalid Credentials.")
+      res.render("signin", {
+        flash: req.flash(),
+        username,
+      })
+    } 
+      req.session.username = username;
+      req.session.signedIn = true;
+      req.flash("success", "Welcome!")
+      res.redirect("/lists");
+  }
+)
 
 // Render the list of todo lists
 app.get("/lists", 
@@ -70,17 +115,20 @@ app.get("/lists",
     res.render("lists", {
       todoLists,
       todosInfo,
-    });  
+    });
   })
 );
 
 // Render new todo list page
-app.get("/lists/new", (req, res) => {
+app.get("/lists/new",
+  requiresAuthentication,
+  (req, res) => {
   res.render("new-list");
 });
 
 // Create a new todo list
 app.post("/lists",
+  requiresAuthentication,
   [
     body("todoListTitle")
       .trim()
@@ -135,7 +183,8 @@ app.get("/lists/:todoListId",
 );
 
 // Toggle completion status of a todo
-app.post("/lists/:todoListId/todos/:todoId/toggle", 
+app.post("/lists/:todoListId/todos/:todoId/toggle",
+    requiresAuthentication,
     catchError(async (req, res) => {
     let { todoListId, todoId } = req.params;
     let toggled = await res.locals.store.toggleDoneTodo(+todoListId, +todoId);
@@ -153,7 +202,8 @@ app.post("/lists/:todoListId/todos/:todoId/toggle",
 );
 
 // Delete a todo
-app.post("/lists/:todoListId/todos/:todoId/destroy", 
+app.post("/lists/:todoListId/todos/:todoId/destroy",
+  requiresAuthentication,
   catchError(async (req, res) => {
     let { todoListId, todoId } = req.params;
     let removed = await res.locals.store.deleteTodo(+todoListId, +todoId);
@@ -166,7 +216,8 @@ app.post("/lists/:todoListId/todos/:todoId/destroy",
 );
 
 // Mark all todos as done
-app.post("/lists/:todoListId/complete_all", 
+app.post("/lists/:todoListId/complete_all",
+  requiresAuthentication,
   catchError(async (req, res) => {
     let todoListId = req.params.todoListId;
     let allMarkedDone = await res.locals.store.markAllDone(+todoListId);
@@ -179,6 +230,7 @@ app.post("/lists/:todoListId/complete_all",
 
 // Create a new todo and add it to the specified list
 app.post("/lists/:todoListId/todos",
+  requiresAuthentication,
   [
     body("todoTitle")
       .trim()
@@ -218,7 +270,8 @@ app.post("/lists/:todoListId/todos",
 );
 
 // Render edit todo list form
-app.get("/lists/:todoListId/edit", 
+app.get("/lists/:todoListId/edit",
+  requiresAuthentication,
   catchError(async (req, res) => {
     let todoListId = req.params.todoListId;
     let todoList = await res.locals.store.loadTodoList(+todoListId);
@@ -229,7 +282,8 @@ app.get("/lists/:todoListId/edit",
 );
 
 // Delete todo list
-app.post("/lists/:todoListId/destroy", 
+app.post("/lists/:todoListId/destroy",
+  requiresAuthentication,
   catchError(async (req, res) => {
     let todoListId = req.params.todoListId;
     let deleted = await res.locals.store.deleteTodoList(+todoListId);
@@ -242,6 +296,7 @@ app.post("/lists/:todoListId/destroy",
 
 // Edit todo list title
 app.post("/lists/:todoListId/edit",
+  requiresAuthentication,
   [
     body("todoListTitle")
       .trim()
