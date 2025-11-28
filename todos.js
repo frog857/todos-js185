@@ -1,3 +1,4 @@
+const config = require("./lib/config");
 const express = require("express");
 const morgan = require("morgan");
 const flash = require("express-flash");
@@ -6,10 +7,11 @@ const { body, validationResult } = require("express-validator");
 const store = require("connect-loki");
 const PgPersistence = require('./lib/pg-persistence');
 const catchError = require('./lib/catch-error');
+const { dbQuery } = require("./lib/db-query");
 
 const app = express();
-const host = "localhost";
-const port = 3000;
+const host = config.HOST;
+const port = config.PORT;
 const LokiStore = store(session);
 
 app.set("views", "./views");
@@ -28,7 +30,7 @@ app.use(session({
   name: "launch-school-todos-session-id",
   resave: false,
   saveUninitialized: true,
-  secret: "this is not very secure",
+  secret: config.SECRET,
   store: new LokiStore({}),
 }));
 
@@ -51,10 +53,10 @@ app.use((req, res, next) => {
 });
 
 // Detect unauthorized access to routes.
-const requiresAuthentication = (req, res) => {
+const requiresAuthentication = (req, res, next) => {
   if (!res.locals.signedIn) {
-    console.log("Unauthorized");
-    res.status(401).send("Unauthorized");
+
+    res.redirect(302, "/users/signin")
   } else {
     next();
   }
@@ -82,11 +84,14 @@ app.post("/users/signout", (req, res) => {
 })
 
 // Submit login credentials
-app.post("/users/signin", (req, res) => {
+app.post("/users/signin", 
+  catchError(async (req, res) => {
     let { username, password } = req.body;
     username = username.trim();
+    
+    let authenticated = await res.locals.store.authenticate(username, password);
 
-    if (username !== "admin" || password !== "secret") {
+    if (!authenticated) {
       req.flash("error", "Invalid Credentials.")
       res.render("signin", {
         flash: req.flash(),
@@ -97,11 +102,12 @@ app.post("/users/signin", (req, res) => {
       req.session.signedIn = true;
       req.flash("success", "Welcome!")
       res.redirect("/lists");
-  }
+  })
 )
 
 // Render the list of todo lists
 app.get("/lists", 
+  requiresAuthentication,
   catchError(async (req, res) => {
     let store = res.locals.store;
     let todoLists = await store.sortedTodoLists();
@@ -155,6 +161,7 @@ app.post("/lists",
       });
     } else {
       let created = await res.locals.store.createTodoList(todoListTitle);
+      console.log(created);
       if (!created) throw new Error("Failed to create todo");
 
       req.flash("success", "The todo list has been created.");
@@ -165,6 +172,7 @@ app.post("/lists",
 
 // Render individual todo list and its todos
 app.get("/lists/:todoListId", 
+  requiresAuthentication,
   catchError(async (req, res) => {
     let todoListId = req.params.todoListId;
     let store = res.locals.store;

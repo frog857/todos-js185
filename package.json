@@ -7,7 +7,8 @@
     "lib": "lib"
   },
   "scripts": {
-    "start": "npx nodemon todos.js"
+    "start": "npx nodemon todos.js",
+    "heroku-postbuild": "npm install --production"
   },
   "author": "",
   "license": "ISC",
@@ -15,7 +16,9 @@
     "nodemon": "^1.19.4"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "connect-loki": "^1.1.0",
+    "dotenv": "^17.2.3",
     "express": "^4.17.1",
     "express-flash": "0.0.2",
     "express-session": "^1.17.0",
@@ -23,5 +26,9 @@
     "morgan": "^1.9.1",
     "pg": "^8.16.3",
     "pug": "^2.0.4"
+  }, 
+  "engines": {
+    "node": "19.8.1",
+    "npm": "9.6.2"
   }
 }
